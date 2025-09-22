@@ -378,6 +378,7 @@ app.get('/api/health', (req, res) => {
 
 // Create Razorpay order
 app.post('/api/create-order', async (req, res) => {
+  const client = await pool.connect();
   try {
     console.log('💳 Create order request received:', req.body);
     
@@ -403,6 +404,13 @@ app.post('/api/create-order', async (req, res) => {
     const order = await razorpay.orders.create(options);
     console.log('✅ Razorpay order created successfully:', order.id);
     
+    // Store order in database
+    await client.query(
+      'INSERT INTO payments (razorpay_order_id, amount, currency, status, created_at) VALUES ($1, $2, $3, $4, $5)',
+      [order.id, order.amount, order.currency, 'created', new Date()]
+    );
+    console.log('💾 Order stored in database:', order.id);
+    
     const response = {
       orderId: order.id,
       amount: order.amount,
@@ -419,6 +427,8 @@ app.post('/api/create-order', async (req, res) => {
       error: 'Failed to create payment order',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+  } finally {
+    client.release();
   }
 });
 
@@ -426,6 +436,7 @@ app.post('/api/create-order', async (req, res) => {
 app.post('/api/verify-payment', async (req, res) => {
   const client = await pool.connect();
   try {
+    console.log('🔍 Payment verification request received:', req.body);
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
     // Create signature for verification
@@ -436,24 +447,32 @@ app.post('/api/verify-payment', async (req, res) => {
       .digest('hex');
 
     const isAuthentic = expectedSignature === razorpay_signature;
+    console.log('🔐 Signature verification:', isAuthentic ? '✅ Valid' : '❌ Invalid');
 
     if (isAuthentic) {
       // Update payment status in database
-      await client.query(
-        'UPDATE payments SET razorpay_payment_id = $1, razorpay_signature = $2, status = $3, updated_at = CURRENT_TIMESTAMP WHERE razorpay_order_id = $4',
+      const updateResult = await client.query(
+        'UPDATE payments SET razorpay_payment_id = $1, razorpay_signature = $2, status = $3, updated_at = CURRENT_TIMESTAMP WHERE razorpay_order_id = $4 RETURNING id',
         [razorpay_payment_id, razorpay_signature, 'completed', razorpay_order_id]
       );
       
-      res.json({ 
-        success: true, 
-        message: 'Payment verified successfully',
-        orderId: razorpay_order_id 
-      });
+      if (updateResult.rows.length > 0) {
+        console.log('✅ Payment verified and updated in database:', razorpay_order_id);
+        res.json({ 
+          success: true, 
+          message: 'Payment verified successfully',
+          orderId: razorpay_order_id 
+        });
+      } else {
+        console.log('❌ Payment order not found in database:', razorpay_order_id);
+        res.status(404).json({ success: false, message: 'Payment order not found' });
+      }
     } else {
+      console.log('❌ Invalid payment signature for order:', razorpay_order_id);
       res.status(400).json({ success: false, message: 'Invalid signature' });
     }
   } catch (error) {
-    console.error('Error verifying payment:', error);
+    console.error('❌ Error verifying payment:', error);
     res.status(500).json({ error: 'Payment verification failed' });
   } finally {
     client.release();
