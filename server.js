@@ -52,24 +52,18 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 // Initialize Razorpay
+console.log('🔧 Initializing Razorpay...');
+console.log('📋 Razorpay Key ID:', process.env.RAZORPAY_KEY_ID ? '✅ Present' : '❌ Missing');
+console.log('📋 Razorpay Secret:', process.env.RAZORPAY_KEY_SECRET ? '✅ Present' : '❌ Missing');
+
+if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+  console.error('❌ Missing Razorpay credentials! Payment functionality will not work.');
+  console.error('Required: RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET environment variables');
+}
+
 const razorpay = new Razorpay({
   key_id: process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
-
-// Initialize PostgreSQL Database with connection pooling optimized for 300-500 concurrent users
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-  max: 30, // Increased for higher concurrency
-  min: 5, // Minimum connections to maintain
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000, // Increased timeout
-  acquireTimeoutMillis: 60000, // Time to wait for connection
-  createTimeoutMillis: 30000,
-  destroyTimeoutMillis: 5000,
-  reapIntervalMillis: 1000,
-  createRetryIntervalMillis: 200,
 });
 
 // Create tables if they don't exist
@@ -362,40 +356,49 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running!', timestamp: new Date().toISOString() });
 });
 
-
-
-
 // Create Razorpay order
 app.post('/api/create-order', async (req, res) => {
-  const client = await pool.connect();
   try {
-    const { amount } = req.body; // Amount in paise (₹99 = 9900 paise)
+    console.log('💳 Create order request received:', req.body);
     
+    const { amount, currency = 'INR' } = req.body;
+    
+    if (!amount) {
+      console.log('❌ Amount missing in request');
+      return res.status(400).json({ error: 'Amount is required' });
+    }
+
+    if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+      console.error('❌ Razorpay credentials not configured');
+      return res.status(500).json({ error: 'Payment service not configured' });
+    }
+
     const options = {
-      amount: amount || 9900, // Default ₹99
-      currency: 'INR',
+      amount: amount, // amount in paise
+      currency: currency,
       receipt: `receipt_${Date.now()}`,
     };
 
+    console.log('🔄 Creating Razorpay order with options:', options);
     const order = await razorpay.orders.create(options);
+    console.log('✅ Razorpay order created successfully:', order.id);
     
-    // Store order in database
-    await client.query(
-      'INSERT INTO payments (razorpay_order_id, amount, currency) VALUES ($1, $2, $3)',
-      [order.id, order.amount, order.currency]
-    );
-    
-    res.json({
+    const response = {
       orderId: order.id,
       amount: order.amount,
       currency: order.currency,
       key: process.env.RAZORPAY_KEY_ID
-    });
+    };
+    
+    console.log('📤 Sending response:', response);
+    res.json(response);
   } catch (error) {
-    console.error('Error creating order:', error);
-    res.status(500).json({ error: 'Failed to create order' });
-  } finally {
-    client.release();
+    console.error('❌ Error creating Razorpay order:', error);
+    console.error('Error details:', error.message);
+    res.status(500).json({ 
+      error: 'Failed to create payment order',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
