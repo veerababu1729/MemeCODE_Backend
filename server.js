@@ -15,12 +15,17 @@ const PORT = process.env.PORT || 5000;
 // CORS Configuration for production
 const corsOptions = {
   origin: process.env.NODE_ENV === 'production' 
-    ? [process.env.FRONTEND_URL]
+    ? [
+        process.env.FRONTEND_URL,
+        'https://memecodefrontend112.vercel.app',
+        'https://skyblue-python-launch.vercel.app'
+      ]
     : ['http://localhost:3000', 'http://localhost:5173', 'http://localhost:8080'],
   credentials: true,
   optionsSuccessStatus: 200,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  preflightContinue: false,
 };
 
 // Security and Performance Middleware
