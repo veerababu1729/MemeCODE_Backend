@@ -4,7 +4,7 @@ const bodyParser = require('body-parser');
 const { Pool } = require('pg');
 const Razorpay = require('razorpay');
 const crypto = require('crypto');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 require('dotenv').config();
