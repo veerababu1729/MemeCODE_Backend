@@ -66,6 +66,21 @@ const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET,
 });
 
+// Initialize PostgreSQL Database with connection pooling optimized for 300-500 concurrent users
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  max: 30, // Increased for higher concurrency
+  min: 5, // Minimum connections to maintain
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000, // Increased timeout
+  acquireTimeoutMillis: 60000, // Time to wait for connection
+  createTimeoutMillis: 30000,
+  destroyTimeoutMillis: 5000,
+  reapIntervalMillis: 1000,
+  createRetryIntervalMillis: 200,
+});
+
 // Create tables if they don't exist
 const initializeDatabase = async () => {
   try {
