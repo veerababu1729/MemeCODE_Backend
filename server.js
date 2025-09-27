@@ -200,9 +200,23 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-pro
 // Email configuration with multiple provider support
 let emailTransporter;
 
-if (process.env.SENDGRID_API_KEY) {
-  // SendGrid configuration (recommended for production)
-  emailTransporter = nodemailer.createTransport({
+if (process.env.RESEND_API_KEY) {
+  // Resend configuration (recommended for production)
+  console.log('🔧 Configuring Resend email service...');
+  emailTransporter = nodemailer.createTransporter({
+    host: 'smtp.resend.com',
+    port: 587,
+    secure: false,
+    auth: {
+      user: 'resend',
+      pass: process.env.RESEND_API_KEY
+    },
+    debug: process.env.NODE_ENV === 'development',
+    logger: process.env.NODE_ENV === 'development'
+  });
+} else if (process.env.SENDGRID_API_KEY) {
+  // SendGrid configuration
+  emailTransporter = nodemailer.createTransporter({
     service: 'SendGrid',
     auth: {
       user: 'apikey',
@@ -389,6 +403,7 @@ app.get('/api/test-email-config', async (req, res) => {
     const emailConfig = {
       hasEmailUser: !!process.env.EMAIL_USER,
       hasEmailPass: !!process.env.EMAIL_PASS,
+      hasResend: !!process.env.RESEND_API_KEY,
       hasSendGrid: !!process.env.SENDGRID_API_KEY,
       hasMailgun: !!process.env.MAILGUN_API_KEY,
       hasAWS: !!process.env.AWS_ACCESS_KEY_ID,
@@ -426,7 +441,8 @@ app.get('/api/test-email-config', async (req, res) => {
       timestamp: new Date().toISOString(),
       config: emailConfig,
       connectionTest: connectionTest,
-      transporterType: process.env.SENDGRID_API_KEY ? 'SendGrid' : 
+      transporterType: process.env.RESEND_API_KEY ? 'Resend' :
+                     process.env.SENDGRID_API_KEY ? 'SendGrid' : 
                      process.env.MAILGUN_API_KEY ? 'Mailgun' : 
                      process.env.AWS_ACCESS_KEY_ID ? 'AWS SES' : 'Gmail'
     });
