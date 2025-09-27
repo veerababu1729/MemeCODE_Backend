@@ -201,19 +201,63 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-pro
 let emailTransporter;
 
 if (process.env.RESEND_API_KEY) {
-  // Resend configuration (recommended for production)
-  console.log('🔧 Configuring Resend email service...');
-  emailTransporter = nodemailer.createTransport({
-    host: 'smtp.resend.com',
-    port: 587,
-    secure: false,
-    auth: {
-      user: 'resend',
-      pass: process.env.RESEND_API_KEY
+  // Resend configuration using HTTP API (more reliable than SMTP)
+  console.log('🔧 Configuring Resend email service via HTTP API...');
+  
+  // Create a custom transporter that uses Resend's HTTP API
+  emailTransporter = {
+    sendMail: async (mailOptions) => {
+      try {
+        const response = await fetch('https://api.resend.com/emails', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            from: mailOptions.from.address || mailOptions.from,
+            to: [mailOptions.to],
+            subject: mailOptions.subject,
+            html: mailOptions.html,
+            text: mailOptions.text
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Resend API error: ${errorData.message || response.statusText}`);
+        }
+
+        const result = await response.json();
+        return {
+          messageId: result.id,
+          response: `250 Message queued as ${result.id}`
+        };
+      } catch (error) {
+        console.error('Resend API error:', error);
+        throw error;
+      }
     },
-    debug: process.env.NODE_ENV === 'development',
-    logger: process.env.NODE_ENV === 'development'
-  });
+    verify: (callback) => {
+      // Test the API key by making a simple request
+      fetch('https://api.resend.com/domains', {
+        headers: {
+          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+          'Content-Type': 'application/json',
+        }
+      })
+      .then(response => {
+        if (response.ok) {
+          callback(null, true);
+        } else {
+          callback(new Error(`Resend API authentication failed: ${response.status}`), false);
+        }
+      })
+      .catch(error => {
+        callback(error, false);
+      });
+    }
+  };
 } else if (process.env.SENDGRID_API_KEY) {
   // SendGrid configuration
   emailTransporter = nodemailer.createTransport({
