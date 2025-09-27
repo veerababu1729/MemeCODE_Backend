@@ -230,13 +230,27 @@ if (process.env.SENDGRID_API_KEY) {
     SES: new aws.SES({ apiVersion: '2010-12-01' })
   });
 } else {
-  // Gmail configuration (fallback)
+  // Gmail configuration (fallback) with timeout and retry settings
   emailTransporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
       user: process.env.EMAIL_USER || 'your-email@gmail.com',
       pass: process.env.EMAIL_PASS || 'your-app-password'
-    }
+    },
+    // Add timeout and connection settings for production
+    connectionTimeout: 60000, // 60 seconds
+    greetingTimeout: 30000,   // 30 seconds
+    socketTimeout: 60000,     // 60 seconds
+    // Retry configuration
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+    // Security settings
+    secure: true,
+    requireTLS: true,
+    // Debug logging in development
+    debug: process.env.NODE_ENV === 'development',
+    logger: process.env.NODE_ENV === 'development'
   });
 }
 
@@ -850,23 +864,40 @@ app.post('/api/forgot-password', async (req, res) => {
       { expiresIn: '1h' }
     );
 
-    // Send password reset email
-    const emailResult = await sendPasswordResetEmail(user.email, resetToken, user.name);
+    // Send password reset email with timeout
+    console.log(`📧 Attempting to send password reset email to: ${email}`);
     
-    if (emailResult.success) {
-      console.log(`✅ Password reset email sent to: ${email}`);
-      res.json({ 
-        success: true, 
-        message: 'Password reset instructions have been sent to your email address. Please check your inbox and spam folder.',
-        // In development, include the token for testing
-        ...(process.env.NODE_ENV === 'development' && { resetToken })
-      });
-    } else {
-      console.error(`❌ Failed to send email to: ${email}`, emailResult.error);
+    // Add timeout wrapper for email sending
+    const emailPromise = sendPasswordResetEmail(user.email, resetToken, user.name);
+    const timeoutPromise = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Email sending timeout after 30 seconds')), 30000);
+    });
+    
+    try {
+      const emailResult = await Promise.race([emailPromise, timeoutPromise]);
+      
+      if (emailResult.success) {
+        console.log(`✅ Password reset email sent to: ${email}`);
+        res.json({ 
+          success: true, 
+          message: 'Password reset instructions have been sent to your email address. Please check your inbox and spam folder.',
+          // In development, include the token for testing
+          ...(process.env.NODE_ENV === 'development' && { resetToken })
+        });
+      } else {
+        console.error(`❌ Failed to send email to: ${email}`, emailResult.error);
+        res.status(500).json({ 
+          error: 'Failed to send password reset email. Please try again later.',
+          // Still provide token in development even if email fails
+          ...(process.env.NODE_ENV === 'development' && { resetToken, emailError: emailResult.error })
+        });
+      }
+    } catch (timeoutError) {
+      console.error(`⏰ Email sending timeout for: ${email}`, timeoutError.message);
       res.status(500).json({ 
-        error: 'Failed to send password reset email. Please try again later.',
-        // Still provide token in development even if email fails
-        ...(process.env.NODE_ENV === 'development' && { resetToken, emailError: emailResult.error })
+        error: 'Email sending is taking too long. Please try again later.',
+        // Still provide token in development even if email times out
+        ...(process.env.NODE_ENV === 'development' && { resetToken, timeoutError: timeoutError.message })
       });
     }
   } catch (error) {
