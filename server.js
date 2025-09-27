@@ -203,7 +203,7 @@ let emailTransporter;
 if (process.env.RESEND_API_KEY) {
   // Resend configuration (recommended for production)
   console.log('🔧 Configuring Resend email service...');
-  emailTransporter = nodemailer.createTransporter({
+  emailTransporter = nodemailer.createTransport({
     host: 'smtp.resend.com',
     port: 587,
     secure: false,
@@ -216,7 +216,7 @@ if (process.env.RESEND_API_KEY) {
   });
 } else if (process.env.SENDGRID_API_KEY) {
   // SendGrid configuration
-  emailTransporter = nodemailer.createTransporter({
+  emailTransporter = nodemailer.createTransport({
     service: 'SendGrid',
     auth: {
       user: 'apikey',
