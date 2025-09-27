@@ -390,6 +390,113 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running!', timestamp: new Date().toISOString() });
 });
 
+// Email configuration test endpoint
+app.get('/api/test-email-config', async (req, res) => {
+  try {
+    console.log('🧪 Testing email configuration...');
+    
+    // Check environment variables
+    const emailConfig = {
+      hasEmailUser: !!process.env.EMAIL_USER,
+      hasEmailPass: !!process.env.EMAIL_PASS,
+      hasSendGrid: !!process.env.SENDGRID_API_KEY,
+      hasMailgun: !!process.env.MAILGUN_API_KEY,
+      hasAWS: !!process.env.AWS_ACCESS_KEY_ID,
+      emailUser: process.env.EMAIL_USER ? process.env.EMAIL_USER.substring(0, 3) + '***' : 'Not set',
+      nodeEnv: process.env.NODE_ENV || 'development'
+    };
+    
+    console.log('📧 Email config check:', emailConfig);
+    
+    // Test email transporter connection
+    let connectionTest = { success: false, error: null };
+    
+    try {
+      console.log('🔌 Testing email transporter connection...');
+      await new Promise((resolve, reject) => {
+        emailTransporter.verify((error, success) => {
+          if (error) {
+            console.error('❌ Email transporter verification failed:', error.message);
+            connectionTest = { success: false, error: error.message, code: error.code };
+            reject(error);
+          } else {
+            console.log('✅ Email transporter verification successful');
+            connectionTest = { success: true, error: null };
+            resolve(success);
+          }
+        });
+      });
+    } catch (error) {
+      console.error('❌ Email connection test failed:', error.message);
+      connectionTest = { success: false, error: error.message, code: error.code };
+    }
+    
+    res.json({
+      status: 'Email configuration test completed',
+      timestamp: new Date().toISOString(),
+      config: emailConfig,
+      connectionTest: connectionTest,
+      transporterType: process.env.SENDGRID_API_KEY ? 'SendGrid' : 
+                     process.env.MAILGUN_API_KEY ? 'Mailgun' : 
+                     process.env.AWS_ACCESS_KEY_ID ? 'AWS SES' : 'Gmail'
+    });
+  } catch (error) {
+    console.error('❌ Email config test error:', error);
+    res.status(500).json({
+      status: 'Email configuration test failed',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Test email sending endpoint (for debugging only)
+app.post('/api/test-send-email', async (req, res) => {
+  try {
+    const { testEmail } = req.body;
+    
+    if (!testEmail) {
+      return res.status(400).json({ error: 'testEmail is required' });
+    }
+    
+    console.log(`🧪 Testing email send to: ${testEmail}`);
+    
+    const testMailOptions = {
+      from: {
+        name: 'MemeCODE Test',
+        address: process.env.EMAIL_USER || 'test@example.com'
+      },
+      to: testEmail,
+      subject: 'MemeCODE Email Test',
+      html: `
+        <h2>Email Configuration Test</h2>
+        <p>This is a test email to verify your email configuration is working.</p>
+        <p>Timestamp: ${new Date().toISOString()}</p>
+        <p>Server: ${process.env.NODE_ENV || 'development'}</p>
+      `,
+      text: `Email Configuration Test - This is a test email sent at ${new Date().toISOString()}`
+    };
+    
+    const result = await emailTransporter.sendMail(testMailOptions);
+    console.log('✅ Test email sent successfully:', result.messageId);
+    
+    res.json({
+      success: true,
+      message: 'Test email sent successfully',
+      messageId: result.messageId,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('❌ Test email send failed:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+      code: error.code,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
 // Create Razorpay order
 app.post('/api/create-order', async (req, res) => {
   const client = await pool.connect();
