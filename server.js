@@ -468,8 +468,14 @@ const sendPasswordResetEmail = async (email, resetToken, userName = '') => {
   };
 
   try {
+    console.log('📧 Sending email with options:', {
+      from: mailOptions.from,
+      to: mailOptions.to,
+      subject: mailOptions.subject
+    });
+    
     const info = await emailTransporter.sendMail(mailOptions);
-    console.log('✅ Password reset email sent successfully:', info.messageId);
+    console.log('✅ Password reset email sent successfully:', info);
     return { success: true, messageId: info.messageId };
   } catch (error) {
     console.error('❌ Failed to send password reset email:', error);
@@ -576,6 +582,7 @@ app.post('/api/test-send-email', async (req, res) => {
     }
     
     console.log(`🧪 Testing email send to: ${testEmail}`);
+    console.log(`🔧 Using transporter type: ${process.env.BREVO_API_KEY ? 'Brevo' : process.env.RESEND_API_KEY ? 'Resend' : 'Other'}`);
     
     const testMailOptions = {
       from: {
@@ -589,17 +596,25 @@ app.post('/api/test-send-email', async (req, res) => {
         <p>This is a test email to verify your email configuration is working.</p>
         <p>Timestamp: ${new Date().toISOString()}</p>
         <p>Server: ${process.env.NODE_ENV || 'development'}</p>
+        <p>Transporter: ${process.env.BREVO_API_KEY ? 'Brevo' : process.env.RESEND_API_KEY ? 'Resend' : 'Other'}</p>
       `,
       text: `Email Configuration Test - This is a test email sent at ${new Date().toISOString()}`
     };
     
+    console.log('📧 Test email options:', {
+      from: testMailOptions.from,
+      to: testMailOptions.to,
+      subject: testMailOptions.subject
+    });
+    
     const result = await emailTransporter.sendMail(testMailOptions);
-    console.log('✅ Test email sent successfully:', result.messageId);
+    console.log('✅ Test email sent successfully:', result);
     
     res.json({
       success: true,
       message: 'Test email sent successfully',
       messageId: result.messageId,
+      result: result,
       timestamp: new Date().toISOString()
     });
   } catch (error) {
@@ -608,6 +623,7 @@ app.post('/api/test-send-email', async (req, res) => {
       success: false,
       error: error.message,
       code: error.code,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
       timestamp: new Date().toISOString()
     });
   }
