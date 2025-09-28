@@ -200,7 +200,71 @@ const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-this-in-pro
 // Email configuration with multiple provider support
 let emailTransporter;
 
-if (process.env.RESEND_API_KEY) {
+if (process.env.BREVO_API_KEY) {
+  // Brevo configuration using HTTP API (transactional emails)
+  console.log('🔧 Configuring Brevo email service via HTTP API...');
+  
+  // Create a custom transporter that uses Brevo's transactional API
+  emailTransporter = {
+    sendMail: async (mailOptions) => {
+      try {
+        const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: {
+            'api-key': process.env.BREVO_API_KEY,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sender: {
+              name: mailOptions.from.name || 'MemeCODE',
+              email: mailOptions.from.address || mailOptions.from
+            },
+            to: [{
+              email: mailOptions.to,
+              name: mailOptions.to.split('@')[0] // Use email prefix as name
+            }],
+            subject: mailOptions.subject,
+            htmlContent: mailOptions.html,
+            textContent: mailOptions.text
+          })
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Brevo API error: ${errorData.message || response.statusText}`);
+        }
+
+        const result = await response.json();
+        return {
+          messageId: result.messageId,
+          response: `250 Message queued as ${result.messageId}`
+        };
+      } catch (error) {
+        console.error('Brevo API error:', error);
+        throw error;
+      }
+    },
+    verify: (callback) => {
+      // Test the API key by making a simple request
+      fetch('https://api.brevo.com/v3/account', {
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'Content-Type': 'application/json',
+        }
+      })
+      .then(response => {
+        if (response.ok) {
+          callback(null, true);
+        } else {
+          callback(new Error(`Brevo API authentication failed: ${response.status}`), false);
+        }
+      })
+      .catch(error => {
+        callback(error, false);
+      });
+    }
+  };
+} else if (process.env.RESEND_API_KEY) {
   // Resend configuration using HTTP API (more reliable than SMTP)
   console.log('🔧 Configuring Resend email service via HTTP API...');
   
@@ -447,6 +511,7 @@ app.get('/api/test-email-config', async (req, res) => {
     const emailConfig = {
       hasEmailUser: !!process.env.EMAIL_USER,
       hasEmailPass: !!process.env.EMAIL_PASS,
+      hasBrevo: !!process.env.BREVO_API_KEY,
       hasResend: !!process.env.RESEND_API_KEY,
       hasSendGrid: !!process.env.SENDGRID_API_KEY,
       hasMailgun: !!process.env.MAILGUN_API_KEY,
@@ -485,7 +550,8 @@ app.get('/api/test-email-config', async (req, res) => {
       timestamp: new Date().toISOString(),
       config: emailConfig,
       connectionTest: connectionTest,
-      transporterType: process.env.RESEND_API_KEY ? 'Resend' :
+      transporterType: process.env.BREVO_API_KEY ? 'Brevo' :
+                     process.env.RESEND_API_KEY ? 'Resend' :
                      process.env.SENDGRID_API_KEY ? 'SendGrid' : 
                      process.env.MAILGUN_API_KEY ? 'Mailgun' : 
                      process.env.AWS_ACCESS_KEY_ID ? 'AWS SES' : 'Gmail'
