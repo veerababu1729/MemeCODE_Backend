@@ -80,9 +80,9 @@ const pool = new Pool({
   max: 10, // Reduced for Render free tier + Supabase limits
   min: 2, // Minimum connections to maintain
   idleTimeoutMillis: 20000, // Shorter idle timeout for free tier
-  connectionTimeoutMillis: 10000, // Longer timeout for Render->Supabase
-  acquireTimeoutMillis: 30000, // Reduced wait time
-  createTimeoutMillis: 10000,
+  connectionTimeoutMillis: 35000, // Longer timeout for Render->Supabase
+  acquireTimeoutMillis: 40000, // Reduced wait time
+  createTimeoutMillis: 35000,
   destroyTimeoutMillis: 5000,
   reapIntervalMillis: 1000,
   createRetryIntervalMillis: 500, // Slower retry for stability
